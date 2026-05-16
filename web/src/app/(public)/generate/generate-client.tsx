@@ -1,28 +1,64 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 interface ProviderItem {
   id: string;
   name: string;
-  models: { id: string; modelKey: string; displayName: string; capability: string }[];
+  models: {
+    id: string;
+    modelKey: string;
+    displayName: string;
+    capability: string;
+  }[];
 }
+
+type Capability = "text-to-image" | "image-to-image" | "upscale" | "inpaint";
 
 export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
   const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
   const provider = providers.find((p) => p.id === providerId);
+  const [capability, setCapability] = useState<Capability>("text-to-image");
+
   const models = useMemo(
-    () => provider?.models.filter((m) => m.capability === "text-to-image") ?? [],
-    [provider],
+    () => provider?.models.filter((m) => m.capability === capability) ?? [],
+    [provider, capability],
   );
   const [modelId, setModelId] = useState(models[0]?.id ?? "");
+  // capability/provider 切换时重置 modelId
+  const lastKey = useRef<string>("");
+  const key = `${providerId}::${capability}`;
+  if (key !== lastKey.current) {
+    lastKey.current = key;
+    if (models[0] && models[0].id !== modelId) {
+      // setState in render is ok if conditional & guarded —— 用 queueMicrotask 避免警告
+      queueMicrotask(() => setModelId(models[0].id));
+    }
+  }
+
   const [prompt, setPrompt] = useState("");
+  const [negativePrompt, setNegativePrompt] = useState("");
   const [size, setSize] = useState("1024x1024");
   const [count, setCount] = useState(1);
+  const [imageUrl, setImageUrl] = useState("");
+  const [maskUrl, setMaskUrl] = useState("");
+
+  const [progress, setProgress] = useState<number>(0);
+  const [phase, setPhase] = useState<string>("");
+  const [taskId, setTaskId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+
+  // 提供商支持的能力列表（必须在任何 early return 之前调用 hooks）
+  const supportedCaps = useMemo(() => {
+    const set = new Set<Capability>();
+    for (const m of provider?.models ?? []) set.add(m.capability as Capability);
+    return Array.from(set);
+  }, [provider]);
 
   if (providers.length === 0) {
     return (
@@ -40,34 +76,125 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
     setLoading(true);
     setError(null);
     setImages([]);
+    setProgress(0);
+    setPhase("提交中");
+    setTaskId("");
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     try {
-      const res = await fetch("/api/generate", {
+      const res = await fetch("/api/generate/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId, modelId, prompt, size, count }),
+        signal: ctrl.signal,
+        body: JSON.stringify({
+          providerId,
+          modelId,
+          prompt,
+          negativePrompt: negativePrompt || undefined,
+          size,
+          count,
+          imageUrl: imageUrl || undefined,
+          maskUrl: maskUrl || undefined,
+        }),
       });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error ?? "生成失败");
-      if (json.data.status !== "succeeded")
-        throw new Error(json.data.errorMessage ?? "生成失败");
-      setImages(json.data.imageUrls);
+      if (!res.ok || !res.body) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE 事件以空行分隔
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        for (const block of events) {
+          const lines = block.split("\n");
+          let evt = "message";
+          let data = "";
+          for (const ln of lines) {
+            if (ln.startsWith("event: ")) evt = ln.slice(7).trim();
+            else if (ln.startsWith("data: ")) data += ln.slice(6);
+          }
+          if (!data) continue;
+          try {
+            const payload = JSON.parse(data);
+            if (evt === "queued") setPhase("已排队");
+            else if (evt === "running") {
+              setPhase("生成中");
+              if (payload.id) setTaskId(payload.id);
+            } else if (evt === "progress") setProgress(payload.progress ?? 0);
+            else if (evt === "succeeded") {
+              setProgress(100);
+              setPhase("完成");
+              setImages(payload.imageUrls ?? []);
+            } else if (evt === "failed") {
+              throw new Error(payload.error ?? "生成失败");
+            } else if (evt === "canceled") {
+              setPhase("已取消");
+            }
+          } catch (e) {
+            if ((e as Error).name === "AbortError") return;
+            throw e;
+          }
+        }
+      }
     } catch (e) {
-      setError((e as Error).message);
+      if ((e as Error).name === "AbortError") {
+        setPhase("已取消");
+      } else {
+        setError((e as Error).message);
+      }
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   }
 
+  async function cancel() {
+    abortRef.current?.abort();
+    if (taskId) {
+      await fetch(`/api/generations/${taskId}/cancel`, { method: "POST" }).catch(
+        () => {},
+      );
+    }
+  }
+
+  function download(url: string, idx: number) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `oepnimg-${taskId || Date.now()}-${idx + 1}.png`;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  async function favorite() {
+    if (!taskId) return;
+    await fetch(`/api/generations/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favorite: true }),
+    }).catch(() => {});
+  }
+
+  const needImageInput = capability === "image-to-image" || capability === "inpaint" || capability === "upscale";
+  const needMask = capability === "inpaint";
+
   return (
     <div className="grid gap-6 md:grid-cols-[360px_1fr]">
-      <div className="space-y-4 rounded-lg border p-4">
+      <div className="space-y-3 rounded-lg border p-4">
         <Field label="API 源">
           <select
             value={providerId}
             onChange={(e) => {
               setProviderId(e.target.value);
-              const p = providers.find((p) => p.id === e.target.value);
-              setModelId(p?.models[0]?.id ?? "");
             }}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           >
@@ -78,25 +205,81 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
             ))}
           </select>
         </Field>
+        <Field label="能力">
+          <div className="flex flex-wrap gap-1">
+            {(["text-to-image", "image-to-image", "upscale", "inpaint"] as Capability[]).map((c) => {
+              const enabled = supportedCaps.includes(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  disabled={!enabled}
+                  onClick={() => setCapability(c)}
+                  className={`rounded-md border px-2 py-1 text-xs ${
+                    capability === c
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent"
+                  } disabled:opacity-30`}
+                >
+                  {capabilityLabel(c)}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
         <Field label="模型">
           <select
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.displayName}
-              </option>
-            ))}
+            {models.length === 0 ? (
+              <option value="">该能力无可用模型</option>
+            ) : (
+              models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName}
+                </option>
+              ))
+            )}
           </select>
         </Field>
-        <Field label="提示词">
+        {needImageInput && (
+          <Field label={needMask ? "原图 URL" : "输入图 URL"} required>
+            <input
+              required
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono"
+            />
+          </Field>
+        )}
+        {needMask && (
+          <Field label="蒙版 URL">
+            <input
+              value={maskUrl}
+              onChange={(e) => setMaskUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono"
+            />
+          </Field>
+        )}
+        <Field label="提示词" required>
           <textarea
-            rows={5}
+            rows={4}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="例：a cyberpunk cat in neon Tokyo street, ultra-detailed"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="反向提示词（可选）">
+          <textarea
+            rows={2}
+            value={negativePrompt}
+            onChange={(e) => setNegativePrompt(e.target.value)}
+            placeholder="blurry, low-quality, deformed"
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           />
         </Field>
@@ -107,13 +290,18 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
               onChange={(e) => setSize(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
-              {["1024x1024", "1024x1792", "1792x1024", "512x512", "768x768"].map(
-                (s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ),
-              )}
+              {[
+                "1024x1024",
+                "1024x1792",
+                "1792x1024",
+                "512x512",
+                "768x768",
+                "1280x720",
+              ].map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="数量">
@@ -122,18 +310,43 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
               min={1}
               max={4}
               value={count}
-              onChange={(e) => setCount(Math.max(1, Math.min(4, Number(e.target.value))))}
+              onChange={(e) =>
+                setCount(Math.max(1, Math.min(4, Number(e.target.value))))
+              }
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </Field>
         </div>
-        <button
-          onClick={submit}
-          disabled={loading || !prompt.trim() || !modelId}
-          className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
-          {loading ? "生成中..." : "生成"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={submit}
+            disabled={
+              loading ||
+              !prompt.trim() ||
+              !modelId ||
+              (needImageInput && !imageUrl)
+            }
+            className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {loading ? `${phase} ${progress}%` : "生成"}
+          </button>
+          {loading && (
+            <button
+              onClick={cancel}
+              className="rounded-md border px-3 text-sm hover:bg-accent"
+            >
+              取消
+            </button>
+          )}
+        </div>
+        {loading && (
+          <div className="h-1 w-full overflow-hidden rounded bg-muted">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
         {error && (
           <p className="rounded-md bg-destructive/10 p-2 text-xs text-destructive">
             {error}
@@ -143,32 +356,71 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
 
       <div className="rounded-lg border p-4">
         {images.length === 0 ? (
-          <p className="text-sm text-muted-foreground">结果将显示在这里</p>
+          <p className="text-sm text-muted-foreground">
+            {loading ? `${phase} ...` : "结果将显示在这里"}
+          </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {images.map((url) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={url}
-                src={url}
-                alt="生成结果"
-                className="aspect-square w-full rounded-md border object-cover"
-              />
-            ))}
-          </div>
+          <>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                {images.length} 张结果
+              </span>
+              <button
+                onClick={favorite}
+                className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
+              >
+                ★ 收藏
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {images.map((url, i) => (
+                <div key={url} className="group relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`result ${i + 1}`}
+                    className="aspect-square w-full rounded-md border object-cover"
+                  />
+                  <button
+                    onClick={() => download(url, i)}
+                    className="absolute bottom-2 right-2 rounded-md bg-background/90 px-2 py-1 text-xs opacity-0 transition group-hover:opacity-100"
+                  >
+                    下载
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-medium text-muted-foreground">
-        {label}
+        {label} {required && <span className="text-destructive">*</span>}
       </span>
       {children}
     </label>
   );
+}
+
+function capabilityLabel(c: Capability): string {
+  return {
+    "text-to-image": "文生图",
+    "image-to-image": "图生图",
+    upscale: "高清放大",
+    inpaint: "局部重绘",
+  }[c];
 }

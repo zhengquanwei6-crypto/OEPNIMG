@@ -15,8 +15,12 @@
     "mobile:setup": "bash mobile/scripts/setup-android.sh",
     "mobile:setup:dry": "bash mobile/scripts/setup-android.sh --dry",
     "mobile:sync": "pnpm -C mobile sync:android",
-    "verify": "pnpm -C web typecheck && pnpm -C web lint && pnpm -C web build",
-    "verify:mobile": "node scripts/verify-mobile.mjs"
+    "verify": "pnpm -C web typecheck && pnpm -C web lint && pnpm -C web test && pnpm -C web build",
+    "verify:mobile": "node scripts/verify-mobile.mjs",
+    "test": "pnpm -C web test",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:logs": "docker compose logs -f"
   },
   "engines": {
     "node": ">=20",

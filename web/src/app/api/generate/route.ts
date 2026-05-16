@@ -2,6 +2,9 @@ import { z } from "zod";
 import { ok, handleError } from "@/lib/api";
 import { getSession } from "@/lib/session";
 import { runGeneration } from "@/lib/services/generation";
+import { assertLimit, clientKey } from "@/lib/rate-limit";
+
+export const dynamic = "force-dynamic";
 
 const Body = z.object({
   providerId: z.string().min(1),
@@ -21,8 +24,14 @@ const Body = z.object({
 
 export async function POST(req: Request) {
   try {
-    const body = Body.parse(await req.json());
     const sess = await getSession();
+    assertLimit({
+      scope: "generate",
+      key: clientKey(req, sess.userId),
+      max: 20,
+      windowMs: 60_000,
+    });
+    const body = Body.parse(await req.json());
     const result = await runGeneration(body, { userId: sess.userId });
     return ok(result);
   } catch (e) {

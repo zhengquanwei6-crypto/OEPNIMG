@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSession } from "@/lib/session";
 import { LogoutButton } from "@/components/logout-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function SiteHeader() {
   const sess = await getSession();
@@ -10,7 +11,7 @@ export async function SiteHeader() {
         <Link href="/" className="font-semibold tracking-tight">
           OEPNIMG
         </Link>
-        <nav className="flex items-center gap-4 text-sm">
+        <nav className="flex items-center gap-3 text-sm">
           <Link
             href="/generate"
             className="text-muted-foreground hover:text-foreground"
@@ -23,6 +24,7 @@ export async function SiteHeader() {
           >
             后台
           </Link>
+          <ThemeToggle />
           {sess.userId ? (
             <>
               <span className="text-xs text-muted-foreground">

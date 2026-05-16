@@ -21,6 +21,11 @@ function getKey(): Buffer {
       "MASTER_KEY 未设置：请在 .env 中配置 32 字节以上的随机字符串",
     );
   }
+  if (raw.length < 32) {
+    throw new Error(
+      `MASTER_KEY 长度不足：当前 ${raw.length} 字符，至少需要 32 字符`,
+    );
+  }
   // 直接对原始字符串做 sha256 派生 32 字节密钥（允许任意长度输入）
   return createHash("sha256").update(raw).digest();
 }

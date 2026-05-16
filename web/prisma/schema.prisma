@@ -179,10 +179,29 @@ model Generation {
   lastRequestJson  String?
   lastResponseJson String?
 
+  // 业务标记
+  favorite       Boolean  @default(false) // 用户收藏
+  hidden         Boolean  @default(false) // 软删除（保留记录但不展示）
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([userId, createdAt])
   @@index([providerId, createdAt])
+  @@index([favorite, createdAt])
+}
+
+// =========================================================================
+// Provider 健康巡检快照
+// =========================================================================
+model ProviderHealth {
+  id         String   @id @default(cuid())
+  providerId String
+  ok         Boolean
+  message    String?
+  latencyMs  Int?
+  checkedAt  DateTime @default(now())
+
+  @@index([providerId, checkedAt])
 }

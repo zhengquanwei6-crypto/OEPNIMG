@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OPPO（Heytap MSP）渠道专属 Manifest 片段。
+
+  ⚠️ 接入正式 SDK 后，请按 OPush 文档替换 TODO 标记的组件。
+  AppKey / AppSecret 已通过 BuildConfig 注入。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application tools:targetApi="34">
+
+        <!-- TODO OPush: 接入 SDK 后取消注释
+        <service
+            android:name="com.heytap.msp.push.service.DataMessageCallbackService"
+            android:exported="true"
+            android:permission="com.heytap.mcs.permission.SEND_MCS_MESSAGE">
+            <intent-filter>
+                <action android:name="com.heytap.mcs.action.RECEIVE_MCS_MESSAGE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.heytap.msp.push.RECEIVE_MCS_MESSAGE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name="com.heytap.msp.push.service.CompatibleDataMessageCallbackService"
+            android:exported="true"
+            android:permission="com.coloros.mcs.permission.SEND_MCS_MESSAGE">
+            <intent-filter>
+                <action android:name="com.coloros.mcs.action.RECEIVE_MCS_MESSAGE" />
+            </intent-filter>
+        </service>
+        -->
+
+        <!-- OPush channel id 必填（ColorOS 强制要求） -->
+        <meta-data
+            android:name="oepnimg.push.default_channel_id"
+            android:value="oepnimg_default" />
+
+    </application>
+</manifest>

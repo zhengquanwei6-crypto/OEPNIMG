@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useState } from "react";
 
 interface TemplateRow {
@@ -58,12 +59,18 @@ export function TemplatesClient({ templates }: { templates: TemplateRow[] }) {
                   <td className="p-3 text-xs text-muted-foreground">
                     {new Date(t.updatedAt).toLocaleString("zh-CN")}
                   </td>
-                  <td className="p-3 text-right">
+                  <td className="p-3 text-right space-x-2">
+                    <Link
+                      href={`/admin/templates/${t.id}`}
+                      className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      编辑
+                    </Link>
                     <button
                       onClick={() => setOpenId(openId === t.id ? null : t.id)}
                       className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
                     >
-                      {openId === t.id ? "关闭" : "操作"}
+                      {openId === t.id ? "关闭" : "干跑/发布"}
                     </button>
                   </td>
                 </tr>

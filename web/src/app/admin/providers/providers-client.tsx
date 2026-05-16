@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 interface Provider {
   id: string;
   slug: string;
   name: string;
+  description?: string | null;
   baseUrl: string;
   enabled: boolean;
   template: { id: string; name: string; version: string };
@@ -28,6 +29,7 @@ export function ProvidersClient({
   templates: Template[];
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
     <div className="space-y-4">
@@ -62,7 +64,22 @@ export function ProvidersClient({
                 </td>
               </tr>
             ) : (
-              providers.map((p) => <ProviderRow key={p.id} provider={p} />)
+              providers.map((p) => (
+                <Fragment key={p.id}>
+                  <ProviderRow
+                    provider={p}
+                    expanded={editingId === p.id}
+                    onToggle={() => setEditingId(editingId === p.id ? null : p.id)}
+                  />
+                  {editingId === p.id && (
+                    <tr className="border-b last:border-0 bg-muted/30">
+                      <td colSpan={6} className="p-4">
+                        <ProviderEditor provider={p} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))
             )}
           </tbody>
         </table>
@@ -71,9 +88,18 @@ export function ProvidersClient({
   );
 }
 
-function ProviderRow({ provider: p }: { provider: Provider }) {
+function ProviderRow({
+  provider: p,
+  expanded,
+  onToggle,
+}: {
+  provider: Provider;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(p.enabled);
+  const [healthMsg, setHealthMsg] = useState<string | null>(null);
 
   async function toggle() {
     setBusy("toggle");
@@ -86,6 +112,22 @@ function ProviderRow({ provider: p }: { provider: Provider }) {
       const json = await res.json();
       if (json.ok) setEnabled(!enabled);
       else alert(json.error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function health() {
+    setBusy("health");
+    setHealthMsg(null);
+    try {
+      const res = await fetch(`/api/providers/${p.id}/health`, { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) setHealthMsg(`错误：${json.error}`);
+      else
+        setHealthMsg(
+          `${json.data.ok ? "✓ 可达" : "✗ 异常"}：${json.data.message ?? ""} (${json.data.latencyMs ?? "-"}ms)`,
+        );
     } finally {
       setBusy(null);
     }
@@ -123,8 +165,24 @@ function ProviderRow({ provider: p }: { provider: Provider }) {
         >
           {enabled ? "启用" : "停用"}
         </span>
+        {healthMsg && (
+          <div className="mt-1 text-[10px] text-muted-foreground">{healthMsg}</div>
+        )}
       </td>
-      <td className="p-3 text-right space-x-2">
+      <td className="p-3 text-right space-x-1">
+        <button
+          onClick={health}
+          disabled={busy != null}
+          className="rounded-md border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+        >
+          {busy === "health" ? "检查中..." : "健康检查"}
+        </button>
+        <button
+          onClick={onToggle}
+          className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
+        >
+          {expanded ? "关闭" : "编辑"}
+        </button>
         <button
           onClick={toggle}
           disabled={busy != null}
@@ -141,6 +199,88 @@ function ProviderRow({ provider: p }: { provider: Provider }) {
         </button>
       </td>
     </tr>
+  );
+}
+
+function ProviderEditor({ provider: p }: { provider: Provider }) {
+  const [form, setForm] = useState({
+    name: p.name,
+    description: p.description ?? "",
+    baseUrl: p.baseUrl,
+    apiKey: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const body: Record<string, unknown> = {
+        name: form.name,
+        description: form.description,
+        baseUrl: form.baseUrl,
+      };
+      if (form.apiKey) body.apiKey = form.apiKey;
+      const res = await fetch(`/api/providers/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
+      setMsg("已保存，刷新页面...");
+      setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+      setMsg(`失败：${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label="名称">
+        <input
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+        />
+      </Field>
+      <Field label="描述">
+        <input
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+        />
+      </Field>
+      <Field label="Base URL">
+        <input
+          value={form.baseUrl}
+          onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+          className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+        />
+      </Field>
+      <Field label="API Key（留空表示不修改）">
+        <input
+          type="password"
+          value={form.apiKey}
+          onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+          placeholder="••••••••"
+          className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+        />
+      </Field>
+      <div className="sm:col-span-2 flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={busy}
+          className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+        >
+          {busy ? "保存中..." : "保存修改"}
+        </button>
+        {msg && <span className="text-xs">{msg}</span>}
+      </div>
+    </div>
   );
 }
 
