@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { getSession } from "@/lib/session";
+import { LogoutButton } from "@/components/logout-button";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const sess = await getSession();
   return (
     <header className="border-b">
       <div className="container mx-auto flex h-14 items-center justify-between">
@@ -8,12 +11,33 @@ export function SiteHeader() {
           OEPNIMG
         </Link>
         <nav className="flex items-center gap-4 text-sm">
-          <Link href="/generate" className="text-muted-foreground hover:text-foreground">
+          <Link
+            href="/generate"
+            className="text-muted-foreground hover:text-foreground"
+          >
             生成
           </Link>
-          <Link href="/admin" className="text-muted-foreground hover:text-foreground">
+          <Link
+            href="/admin"
+            className="text-muted-foreground hover:text-foreground"
+          >
             后台
           </Link>
+          {sess.userId ? (
+            <>
+              <span className="text-xs text-muted-foreground">
+                {sess.username}
+              </span>
+              <LogoutButton />
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              登录
+            </Link>
+          )}
         </nav>
       </div>
     </header>

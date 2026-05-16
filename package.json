@@ -1,0 +1,26 @@
+{
+  "name": "oepnimg",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OEPNIMG · 多源 AI 图片生成平台（PC 网页 + Android APK）",
+  "scripts": {
+    "dev": "pnpm -C web dev",
+    "build": "pnpm -C web build",
+    "start": "pnpm -C web start",
+    "typecheck": "pnpm -C web typecheck",
+    "lint": "pnpm -C web lint",
+    "db:migrate": "pnpm -C web prisma:migrate",
+    "db:seed": "pnpm -C web db:seed",
+    "db:studio": "pnpm -C web prisma:studio",
+    "mobile:setup": "bash mobile/scripts/setup-android.sh",
+    "mobile:setup:dry": "bash mobile/scripts/setup-android.sh --dry",
+    "mobile:sync": "pnpm -C mobile sync:android",
+    "verify": "pnpm -C web typecheck && pnpm -C web lint && pnpm -C web build",
+    "verify:mobile": "node scripts/verify-mobile.mjs"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.12.3"
+}

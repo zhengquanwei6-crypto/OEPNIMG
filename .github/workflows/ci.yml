@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  web:
+    name: Web · typecheck + lint + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare .env (CI placeholders)
+        run: |
+          cat > .env <<EOF
+          DATABASE_URL=file:./ci.db
+          SESSION_SECRET=ci-secret-please-change-me-please-change-me-32chars
+          MASTER_KEY=ci-master-key-please-change-me-32+chars-here
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=admin1234
+          AGENT_BASE_URL=https://api.openai.com/v1
+          AGENT_API_KEY=
+          AGENT_MODEL=gpt-4o-mini
+          EOF
+
+      - name: Prisma generate
+        run: pnpm prisma generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+  mobile-static:
+    name: Mobile · static checks (no Android SDK)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify Kotlin / Manifest / Gradle / TS
+        run: node scripts/verify-mobile.mjs
