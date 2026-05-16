@@ -1,10 +1,14 @@
 /**
- * 数据库种子：
+ * 数据库种子（幂等）：
  *  1. 若不存在用户，依据 ADMIN_USERNAME / ADMIN_PASSWORD 创建管理员
- *  2. 若不存在任何 AdapterTemplate，注入一个 OpenAI 兼容的官方默认模板（draft 状态，需要用户填 baseUrl/apiKey 后激活）
+ *  2. 注入内置 AdapterTemplate（OpenAI 兼容 + KIE.AI），均为 published 状态
+ *
+ * 重复运行不会重复插入；模板的 templateKey+version 是唯一键。
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const prisma = new PrismaClient();
 
@@ -42,6 +46,36 @@ const DEFAULT_OPENAI_COMPATIBLE = {
   ],
 };
 
+interface BuiltinTemplate {
+  templateKey: string;
+  name: string;
+  description: string;
+  config: unknown;
+}
+
+function loadKieAi(): BuiltinTemplate {
+  const path = join(__dirname, "templates/kie-ai-v1.json");
+  const config = JSON.parse(readFileSync(path, "utf8"));
+  return {
+    templateKey: "kie-ai",
+    name: "KIE.AI 图像生成（Flux Kontext + 4o Image）",
+    description:
+      "kie.ai 中转站官方端点：Flux Kontext Pro/Max + GPT-4o Image。任务式 API，自动轮询。",
+    config,
+  };
+}
+
+const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
+  {
+    templateKey: "openai-compatible",
+    name: "OpenAI 兼容 v1",
+    description:
+      "默认模板：适用于任何兼容 OpenAI /v1/images/generations 接口的中转站",
+    config: DEFAULT_OPENAI_COMPATIBLE,
+  },
+  loadKieAi(),
+];
+
 async function main() {
   // 1) admin 用户
   const username = process.env.ADMIN_USERNAME ?? "admin";
@@ -53,25 +87,30 @@ async function main() {
       data: { username, passwordHash, role: "admin" },
     });
     console.log(`[seed] created admin user: ${username}`);
+  } else {
+    console.log(`[seed] admin user "${username}" exists, skipped`);
   }
 
-  // 2) 默认 OpenAI 兼容模板（draft）
-  const existsTpl = await prisma.adapterTemplate.findFirst({
-    where: { templateKey: "openai-compatible" },
-  });
-  if (!existsTpl) {
+  // 2) 内置模板（幂等）
+  for (const t of BUILTIN_TEMPLATES) {
+    const exists = await prisma.adapterTemplate.findFirst({
+      where: { templateKey: t.templateKey },
+    });
+    if (exists) {
+      console.log(`[seed] template "${t.templateKey}" exists, skipped`);
+      continue;
+    }
     await prisma.adapterTemplate.create({
       data: {
-        templateKey: "openai-compatible",
+        templateKey: t.templateKey,
         version: "1.0.0",
-        name: "OpenAI 兼容 v1",
-        description:
-          "默认模板：适用于任何兼容 OpenAI /v1/images/generations 接口的中转站",
+        name: t.name,
+        description: t.description,
         status: "published",
-        configJson: JSON.stringify(DEFAULT_OPENAI_COMPATIBLE),
+        configJson: JSON.stringify(t.config),
       },
     });
-    console.log("[seed] created default adapter template: openai-compatible");
+    console.log(`[seed] created template: ${t.templateKey}`);
   }
 }
 
