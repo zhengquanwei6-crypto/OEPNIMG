@@ -67,6 +67,8 @@ export class AdapterError extends Error {
       | "timeout"
       | "canceled",
     public readonly cause?: unknown,
+    /** 调试快照（如已发送的请求 + 收到的响应） */
+    public readonly debug?: RunOutput["debug"],
   ) {
     super(message);
     this.name = "AdapterError";
@@ -124,13 +126,13 @@ export class AdapterRunner {
       debug.response = raw;
       if (!res.ok) {
         const errMsg = this.extractError(raw, model) ?? `HTTP ${res.status}`;
-        throw new AdapterError(`中转站返回错误：${errMsg}`, "request");
+        throw new AdapterError(`中转站返回错误：${errMsg}`, "request", undefined, debug);
       }
     } catch (e) {
       if (e instanceof AdapterError) throw e;
       if ((e as Error).name === "AbortError")
-        throw new AdapterError("已取消", "canceled", e);
-      throw new AdapterError((e as Error).message ?? "请求失败", "request", e);
+        throw new AdapterError("已取消", "canceled", e, debug);
+      throw new AdapterError((e as Error).message ?? "请求失败", "request", e, debug);
     }
 
     // -------- sync --------
@@ -140,6 +142,8 @@ export class AdapterRunner {
         throw new AdapterError(
           `未在响应中提取到图片 URL（path: ${model.response.imageUrlPath}）`,
           "parse",
+          undefined,
+          debug,
         );
       }
       input.onProgress?.(100);
@@ -153,9 +157,14 @@ export class AdapterRunner {
     // -------- async-polling --------
     const taskId = extractByPath(raw, model.response.taskIdPath);
     if (!taskId || Array.isArray(taskId)) {
+      const errMsg = this.extractError(raw, model);
       throw new AdapterError(
-        `未提取到任务 ID（path: ${model.response.taskIdPath}）`,
+        errMsg
+          ? `中转站返回错误：${errMsg}`
+          : `未提取到任务 ID（path: ${model.response.taskIdPath}）`,
         "parse",
+        undefined,
+        debug,
       );
     }
 

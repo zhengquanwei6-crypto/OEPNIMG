@@ -12,6 +12,11 @@ import { join } from "node:path";
 
 const prisma = new PrismaClient();
 
+async function getSyncFn() {
+  const mod = (await import("../src/lib/services/providers")) as typeof import("../src/lib/services/providers");
+  return mod.syncAllProvidersOfTemplate;
+}
+
 const DEFAULT_OPENAI_COMPATIBLE = {
   id: "openai-compatible-v1",
   name: "OpenAI 兼容 (DALL·E 3 / GPT-Image)",
@@ -50,18 +55,20 @@ interface BuiltinTemplate {
   templateKey: string;
   name: string;
   description: string;
-  config: unknown;
+  config: Record<string, unknown>;
+  version: string;
 }
 
 function loadKieAi(): BuiltinTemplate {
   const path = join(__dirname, "templates/kie-ai-v1.json");
-  const config = JSON.parse(readFileSync(path, "utf8"));
+  const config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
   return {
     templateKey: "kie-ai",
-    name: "KIE.AI 图像生成（Flux Kontext + 4o Image）",
+    name: "KIE.AI 图像生成（GPT Image 2 + Flux Kontext + 4o）",
     description:
-      "kie.ai 中转站官方端点：Flux Kontext Pro/Max + GPT-4o Image。任务式 API，自动轮询。",
+      "kie.ai 中转站官方端点：GPT Image 2 (1K/2K/4K) + Flux Kontext + 4o Image。任务式 API，自动轮询。",
     config,
+    version: (config.version as string) ?? "1.0.0",
   };
 }
 
@@ -72,6 +79,7 @@ const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
     description:
       "默认模板：适用于任何兼容 OpenAI /v1/images/generations 接口的中转站",
     config: DEFAULT_OPENAI_COMPATIBLE,
+    version: "1.0.0",
   },
   loadKieAi(),
 ];
@@ -91,26 +99,94 @@ async function main() {
     console.log(`[seed] admin user "${username}" exists, skipped`);
   }
 
-  // 2) 内置模板（幂等）
+  // 2) 内置模板（幂等，但同 templateKey 已存在的旧版本会被自动升级到当前 version）
+  const refreshedTemplateIds: string[] = [];
   for (const t of BUILTIN_TEMPLATES) {
-    const exists = await prisma.adapterTemplate.findFirst({
+    const existsAny = await prisma.adapterTemplate.findFirst({
       where: { templateKey: t.templateKey },
+      orderBy: { updatedAt: "desc" },
     });
-    if (exists) {
-      console.log(`[seed] template "${t.templateKey}" exists, skipped`);
+    const targetVersion = t.version ?? "1.0.0";
+
+    if (!existsAny) {
+      const created = await prisma.adapterTemplate.create({
+        data: {
+          templateKey: t.templateKey,
+          version: targetVersion,
+          name: t.name,
+          description: t.description,
+          status: "published",
+          configJson: JSON.stringify(t.config),
+        },
+      });
+      console.log(`[seed] created template: ${t.templateKey} v${targetVersion}`);
+      refreshedTemplateIds.push(created.id);
       continue;
     }
-    await prisma.adapterTemplate.create({
-      data: {
-        templateKey: t.templateKey,
-        version: "1.0.0",
-        name: t.name,
-        description: t.description,
-        status: "published",
-        configJson: JSON.stringify(t.config),
-      },
+
+    if (existsAny.version === targetVersion) {
+      // 同版本：仅刷新 config / name / description（保持其余字段）
+      const updated = await prisma.adapterTemplate.update({
+        where: { id: existsAny.id },
+        data: {
+          name: t.name,
+          description: t.description,
+          configJson: JSON.stringify(t.config),
+          status:
+            existsAny.status === "archived" ? existsAny.status : "published",
+        },
+      });
+      console.log(
+        `[seed] refreshed template: ${t.templateKey} v${targetVersion}`,
+      );
+      refreshedTemplateIds.push(updated.id);
+      continue;
+    }
+
+    // 不同版本：检查是否已存在该 version
+    const sameVer = await prisma.adapterTemplate.findFirst({
+      where: { templateKey: t.templateKey, version: targetVersion },
     });
-    console.log(`[seed] created template: ${t.templateKey}`);
+    if (sameVer) {
+      const updated = await prisma.adapterTemplate.update({
+        where: { id: sameVer.id },
+        data: {
+          name: t.name,
+          description: t.description,
+          configJson: JSON.stringify(t.config),
+        },
+      });
+      console.log(
+        `[seed] refreshed existing version: ${t.templateKey} v${targetVersion}`,
+      );
+      refreshedTemplateIds.push(updated.id);
+    } else {
+      const created = await prisma.adapterTemplate.create({
+        data: {
+          templateKey: t.templateKey,
+          version: targetVersion,
+          name: t.name,
+          description: t.description,
+          status: "published",
+          configJson: JSON.stringify(t.config),
+        },
+      });
+      console.log(
+        `[seed] upgraded ${t.templateKey} ${existsAny.version} → ${targetVersion}`,
+      );
+      refreshedTemplateIds.push(created.id);
+    }
+  }
+
+  // 3) 同步使用刷新模板的 Provider 的 Model 表（增删改）
+  const syncAllProvidersOfTemplate = await getSyncFn();
+  for (const tid of refreshedTemplateIds) {
+    const r = await syncAllProvidersOfTemplate(tid);
+    if (r.providers > 0 && (r.added || r.updated || r.disabled)) {
+      console.log(
+        `[seed] synced ${r.providers} provider(s): +${r.added} models, ~${r.updated} updated, -${r.disabled} disabled`,
+      );
+    }
   }
 }
 

@@ -10,6 +10,72 @@
   "capabilities": ["text-to-image", "image-to-image"],
   "models": [
     {
+      "id": "gpt-image-2-t2i",
+      "displayName": "GPT Image 2 · 文生图",
+      "capability": "text-to-image",
+      "endpoint": { "method": "POST", "path": "/jobs/createTask" },
+      "request": {
+        "contentType": "application/json",
+        "bodyTemplate": {
+          "model": "gpt-image-2-text-to-image",
+          "input": {
+            "prompt": "{{prompt}}",
+            "aspect_ratio": "{{aspectRatio|auto}}",
+            "resolution": "{{resolution|1K}}",
+            "output_format": "{{outputFormat|png}}"
+          }
+        }
+      },
+      "response": {
+        "type": "async-polling",
+        "taskIdPath": "data.taskId",
+        "errorPath": "msg",
+        "polling": {
+          "endpoint": { "method": "GET", "path": "/jobs/recordInfo?taskId={{taskId}}" },
+          "intervalMs": 4000,
+          "timeoutMs": 600000,
+          "statusPath": "data.state",
+          "doneStatuses": ["success"],
+          "failStatuses": ["fail"],
+          "imageUrlPath": "data.resultJson>>resultUrls[*]"
+        }
+      },
+      "notes": "分辨率：1K / 2K / 4K（注意 1:1 不能 4K；auto 默认只能 1K）。长宽比：auto / 1:1 / 9:16 / 16:9 / 4:3 / 3:4。"
+    },
+    {
+      "id": "gpt-image-2-i2i",
+      "displayName": "GPT Image 2 · 图生图",
+      "capability": "image-to-image",
+      "endpoint": { "method": "POST", "path": "/jobs/createTask" },
+      "request": {
+        "contentType": "application/json",
+        "bodyTemplate": {
+          "model": "gpt-image-2-image-to-image",
+          "input": {
+            "prompt": "{{prompt}}",
+            "image_input": ["{{imageUrl}}"],
+            "aspect_ratio": "{{aspectRatio|auto}}",
+            "resolution": "{{resolution|1K}}",
+            "output_format": "{{outputFormat|png}}"
+          }
+        }
+      },
+      "response": {
+        "type": "async-polling",
+        "taskIdPath": "data.taskId",
+        "errorPath": "msg",
+        "polling": {
+          "endpoint": { "method": "GET", "path": "/jobs/recordInfo?taskId={{taskId}}" },
+          "intervalMs": 4000,
+          "timeoutMs": 600000,
+          "statusPath": "data.state",
+          "doneStatuses": ["success"],
+          "failStatuses": ["fail"],
+          "imageUrlPath": "data.resultJson>>resultUrls[*]"
+        }
+      }
+    },
+    {
       "id": "flux-kontext-pro",
       "displayName": "Flux Kontext Pro",
       "capability": "text-to-image",
@@ -73,7 +139,7 @@
     },
     {
       "id": "flux-kontext-edit",
-      "displayName": "Flux Kontext (图生图)",
+      "displayName": "Flux Kontext · 图生图",
       "capability": "image-to-image",
       "endpoint": { "method": "POST", "path": "/flux/kontext/generate" },
       "request": {
@@ -131,5 +197,5 @@
       }
     }
   ],
-  "notes": "kie.ai 任务式 API。Bearer token + JSON body。successFlag: 0=进行中, 1=成功, 2/3=失败。文档: https://docs.kie.ai/"
+  "notes": "kie.ai 任务式 API。两套端点：1) /jobs/createTask + /jobs/recordInfo （新版统一，state=success/fail/generating）2) /flux/kontext/* + /gpt4o-image/* （旧版，successFlag=0/1/2/3）。GPT Image 2 支持 1K/2K/4K 分辨率与多种长宽比。"
 }

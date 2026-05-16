@@ -43,6 +43,10 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
   const [count, setCount] = useState(1);
   const [imageUrl, setImageUrl] = useState("");
   const [maskUrl, setMaskUrl] = useState("");
+  // 业务自定义参数（透传给 Adapter 的 extra）
+  const [aspectRatio, setAspectRatio] = useState("1:1");
+  const [resolution, setResolution] = useState<"1K" | "2K" | "4K">("1K");
+  const [outputFormat, setOutputFormat] = useState<"png" | "jpg" | "jpeg">("png");
 
   const [progress, setProgress] = useState<number>(0);
   const [phase, setPhase] = useState<string>("");
@@ -97,6 +101,11 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
           count,
           imageUrl: imageUrl || undefined,
           maskUrl: maskUrl || undefined,
+          extra: {
+            aspectRatio,
+            resolution,
+            outputFormat,
+          },
         }),
       });
       if (!res.ok || !res.body) {
@@ -186,6 +195,15 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
 
   const needImageInput = capability === "image-to-image" || capability === "inpaint" || capability === "upscale";
   const needMask = capability === "inpaint";
+
+  // 当前所选模型的 modelKey（用来判断显示哪些参数）
+  const currentModel = models.find((m) => m.id === modelId);
+  const modelKey = currentModel?.modelKey ?? "";
+  // GPT Image 2：使用 aspectRatio + resolution，不要 size
+  const useGptImage2Style = modelKey.startsWith("gpt-image-2");
+  // 1:1 不能 4K（kie.ai 限制）；auto 只能 1K
+  const resolution4kBlocked = useGptImage2Style && aspectRatio === "1:1";
+  const resolutionAutoBlocked = useGptImage2Style && aspectRatio === "auto";
 
   return (
     <div className="grid gap-6 md:grid-cols-[360px_1fr]">
@@ -284,39 +302,114 @@ export function GenerateClient({ providers }: { providers: ProviderItem[] }) {
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="尺寸">
-            <select
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            >
-              {[
-                "1024x1024",
-                "1024x1792",
-                "1792x1024",
-                "512x512",
-                "768x768",
-                "1280x720",
-              ].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="数量">
-            <input
-              type="number"
-              min={1}
-              max={4}
-              value={count}
-              onChange={(e) =>
-                setCount(Math.max(1, Math.min(4, Number(e.target.value))))
-              }
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            />
-          </Field>
+          {useGptImage2Style ? (
+            <Field label="长宽比">
+              <select
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                {["auto", "1:1", "9:16", "16:9", "4:3", "3:4"].map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <Field label="尺寸">
+              <select
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                {[
+                  "1024x1024",
+                  "1024x1792",
+                  "1792x1024",
+                  "512x512",
+                  "768x768",
+                  "1280x720",
+                ].map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {useGptImage2Style ? (
+            <Field label="分辨率">
+              <div className="flex gap-1">
+                {(["1K", "2K", "4K"] as const).map((r) => {
+                  const blocked =
+                    (r === "4K" && resolution4kBlocked) ||
+                    (r !== "1K" && resolutionAutoBlocked);
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      disabled={blocked}
+                      onClick={() => setResolution(r)}
+                      className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${
+                        resolution === r && !blocked
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-accent"
+                      } disabled:opacity-30`}
+                      title={
+                        blocked
+                          ? r === "4K"
+                            ? "1:1 长宽比不支持 4K"
+                            : "auto 长宽比仅支持 1K"
+                          : ""
+                      }
+                    >
+                      {r}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          ) : (
+            <Field label="数量">
+              <input
+                type="number"
+                min={1}
+                max={4}
+                value={count}
+                onChange={(e) =>
+                  setCount(Math.max(1, Math.min(4, Number(e.target.value))))
+                }
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              />
+            </Field>
+          )}
         </div>
+        {useGptImage2Style && (
+          <Field label="输出格式">
+            <div className="flex gap-1">
+              {(["png", "jpg"] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setOutputFormat(f)}
+                  className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${
+                    outputFormat === f
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent"
+                  }`}
+                >
+                  {f.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
+        {resolution4kBlocked && resolution === "4K" && (
+          <p className="rounded-md bg-amber-100 p-2 text-xs text-amber-900">
+            提示：1:1 长宽比不支持 4K，提交前请改为其他分辨率或长宽比
+          </p>
+        )}
         <div className="flex gap-2">
           <button
             onClick={submit}

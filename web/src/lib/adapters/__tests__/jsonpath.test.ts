@@ -41,4 +41,32 @@ describe("extractByPath", () => {
     expect(extractByPath(resp, "imageUrl")).toBe("https://mj.x/grid.png");
     expect(extractByPath(resp, "status")).toBe("SUCCESS");
   });
+
+  it("嵌套 JSON 字符串解析（kie.ai jobs API）", () => {
+    const resp = {
+      data: {
+        state: "success",
+        resultJson:
+          '{"resultUrls":["https://x.com/a.png","https://x.com/b.png"]}',
+      },
+    };
+    expect(extractByPath(resp, "data.resultJson>>resultUrls[*]")).toEqual([
+      "https://x.com/a.png",
+      "https://x.com/b.png",
+    ]);
+    // 单个 URL 时返回字符串（与现有 API 行为一致；runner.extractImageUrls 会兼容）
+    const resp2 = {
+      data: { resultJson: '{"resultUrls":["https://x.com/only.png"]}' },
+    };
+    expect(extractByPath(resp2, "data.resultJson>>resultUrls[*]")).toBe(
+      "https://x.com/only.png",
+    );
+  });
+
+  it("嵌套 JSON 解析失败时返回 undefined", () => {
+    const resp = { data: { resultJson: "not-valid-json" } };
+    expect(
+      extractByPath(resp, "data.resultJson>>resultUrls[*]"),
+    ).toBeUndefined();
+  });
 });

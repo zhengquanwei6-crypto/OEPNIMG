@@ -166,3 +166,87 @@ export async function updateProvider(args: {
 export async function deleteProvider(id: string) {
   return prisma.provider.delete({ where: { id } });
 }
+
+/**
+ * 把 Provider 的 Model 表与其引用的 AdapterTemplate.config.models 同步：
+ *   - 模板新增的 model：插入新 Model 行
+ *   - 模板删除的 model：保留旧 Model 行（不影响历史 Generation 关联），但标记 enabled=false
+ *   - 已存在的 model：刷新 displayName / capability / costEstimate
+ *
+ * 调用时机：模板 config 升级后（如 seed refresh / 用户编辑模板）
+ */
+export async function syncProviderModels(providerId: string) {
+  const p = await prisma.provider.findUnique({
+    where: { id: providerId },
+    include: { template: true, models: true },
+  });
+  if (!p) return { added: 0, updated: 0, disabled: 0 };
+
+  const cfg = JSON.parse(p.template.configJson) as ProviderAdapter;
+  const cfgKeys = new Set(cfg.models.map((m) => m.id));
+
+  let added = 0,
+    updated = 0,
+    disabled = 0;
+
+  for (const cm of cfg.models) {
+    const existing = p.models.find((mm) => mm.modelKey === cm.id);
+    if (!existing) {
+      await prisma.model.create({
+        data: {
+          providerId: p.id,
+          modelKey: cm.id,
+          displayName: cm.displayName,
+          capability: cm.capability,
+          costEstimate: cm.costEstimate,
+        },
+      });
+      added++;
+    } else {
+      const needsUpdate =
+        existing.displayName !== cm.displayName ||
+        existing.capability !== cm.capability ||
+        existing.costEstimate !== (cm.costEstimate ?? null);
+      if (needsUpdate) {
+        await prisma.model.update({
+          where: { id: existing.id },
+          data: {
+            displayName: cm.displayName,
+            capability: cm.capability,
+            costEstimate: cm.costEstimate,
+          },
+        });
+        updated++;
+      }
+    }
+  }
+
+  // 模板里没有的旧 model：禁用而非删除（避免破坏历史 FK）
+  for (const mm of p.models) {
+    if (!cfgKeys.has(mm.modelKey) && mm.enabled) {
+      await prisma.model.update({
+        where: { id: mm.id },
+        data: { enabled: false },
+      });
+      disabled++;
+    }
+  }
+
+  return { added, updated, disabled };
+}
+
+/** 同步所有指向给定模板的 Provider */
+export async function syncAllProvidersOfTemplate(templateId: string) {
+  const list = await prisma.provider.findMany({
+    where: { templateId },
+    select: { id: true },
+  });
+  const out = { providers: list.length, added: 0, updated: 0, disabled: 0 };
+  for (const p of list) {
+    const r = await syncProviderModels(p.id);
+    out.added += r.added;
+    out.updated += r.updated;
+    out.disabled += r.disabled;
+  }
+  return out;
+}

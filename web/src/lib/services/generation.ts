@@ -97,7 +97,7 @@ export async function* runGenerationStream(
   let done = false;
   let finalResult:
     | { ok: true; imageUrls: string[]; durationMs: number; debug: unknown }
-    | { ok: false; error: string; canceled: boolean };
+    | { ok: false; error: string; canceled: boolean; debug?: unknown };
   runP.then(
     (out) => {
       finalResult = {
@@ -117,6 +117,7 @@ export async function* runGenerationStream(
         ok: false,
         error: (err as Error).message ?? "生成失败",
         canceled,
+        debug: ae?.debug,
       };
       done = true;
       resolveNext?.();
@@ -166,6 +167,9 @@ export async function* runGenerationStream(
         status: "failed",
         errorMessage: finalResult!.error.slice(0, 1000),
         finishedAt: new Date(),
+        lastResponseJson: finalResult!.debug
+          ? safeJsonStringify(finalResult!.debug)
+          : undefined,
       },
     });
     yield { type: "failed", id: job.id, error: finalResult!.error };
