@@ -3,6 +3,8 @@ import { ok, handleError } from "@/lib/api";
 import { requireAdmin } from "@/lib/session";
 import { listProviders, createProvider } from "@/lib/services/providers";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const data = await listProviders();
