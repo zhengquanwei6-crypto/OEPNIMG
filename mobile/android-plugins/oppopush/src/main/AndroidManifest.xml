@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OPush（OPPO 推送 / Heytap MSP）所需权限占位。
+  接入正式 SDK 后，参考 OPPO 推送官方文档，按其规则注入：
+    - PushService
+    - DataMessageReceiver
+    - permission.PUSH_PROVIDER
+    - meta-data: APP_KEY / APP_SECRET
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_USER_PRESENT" />
+
+</manifest>

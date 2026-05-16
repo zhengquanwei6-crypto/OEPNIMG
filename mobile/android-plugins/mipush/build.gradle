@@ -1,0 +1,25 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.oepnimg.plugin.mipush'
+    compileSdk 34
+    defaultConfig { minSdk 23; targetSdk 34 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+repositories {
+    flatDir { dirs 'libs' }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation project(':capacitor-android')
+
+    // 把 MiPushSDK*.aar 放到 mipush/libs/ 后启用：
+    // implementation(name: 'MiPush_SDK_Client_5_x_x', ext: 'aar')
+}

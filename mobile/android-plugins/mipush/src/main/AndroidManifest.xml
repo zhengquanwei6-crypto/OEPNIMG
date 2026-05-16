@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  小米推送所需权限 / 组件占位。
+  接入正式 SDK 后，需要按照 MiPush 官方文档增加：
+    - PushService
+    - PushMessageReceiver
+    - NotificationClickedActivity
+    - permission.xxx.MIPUSH_RECEIVE
+  并通过 manifestPlaceholders 注入 {应用包名}.permission.MIPUSH_RECEIVE。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+</manifest>

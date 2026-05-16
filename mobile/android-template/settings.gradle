@@ -1,0 +1,26 @@
+/**
+ * 此文件为模板。`cap add android` 之后将其内容追加到 mobile/android/settings.gradle，
+ * 把自研插件模块挂到 Gradle 工程中。
+ *
+ * 同步方式：
+ *   cat mobile/android-template/settings.gradle >> mobile/android/settings.gradle
+ */
+
+include ':app'
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')
+
+apply from: 'capacitor.settings.gradle'
+
+// ---- 自研原生插件 ----
+include ':oepnimg-gallery-save'
+project(':oepnimg-gallery-save').projectDir = new File('../android-plugins/gallery-save')
+
+include ':oepnimg-vendor-helper'
+project(':oepnimg-vendor-helper').projectDir = new File('../android-plugins/vendor-helper')
+
+include ':oepnimg-mipush'
+project(':oepnimg-mipush').projectDir = new File('../android-plugins/mipush')
+
+include ':oepnimg-oppopush'
+project(':oepnimg-oppopush').projectDir = new File('../android-plugins/oppopush')

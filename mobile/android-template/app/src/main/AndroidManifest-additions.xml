@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  把以下权限/组件合并到 mobile/android/app/src/main/AndroidManifest.xml。
+  Android Studio 的 Manifest Merger 会自动合并自研插件 AAR 中的同名声明，
+  这里仅列出 *App 层* 必需的项。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 网络（已默认存在，仅做参考） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 推送 / 唤醒（小米/OPPO 需要） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 保存到相册（Android 13+ 用范围读权限；老版本写外部存储） -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:ignore="SelectedPhotoAccess" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- 厂商权限引导：跳转到 设置 / 自启动管理 / 电池优化 -->
+    <queries>
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.oppo.safe" />
+        <package android:name="com.iqoo.secure" />
+        <package android:name="com.huawei.systemmanager" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
+        android:requestLegacyExternalStorage="true"
+        tools:replace="android:allowBackup,android:usesCleartextTraffic">
+
+        <!-- 注意：厂商 SDK 的 Receiver/Service 会通过 manifestPlaceholders 注入 AppId/AppKey -->
+
+    </application>
+</manifest>

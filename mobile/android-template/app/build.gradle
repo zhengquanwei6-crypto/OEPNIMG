@@ -1,0 +1,106 @@
+/**
+ * 此文件为 *模板*，将在 `npx cap add android` 之后用于覆盖
+ * 自动生成的 android/app/build.gradle，从而启用 productFlavors。
+ *
+ * 同步方式：
+ *   cp mobile/android-template/app/build.gradle mobile/android/app/build.gradle
+ */
+apply plugin: 'com.android.application'
+
+android {
+    namespace "com.oepnimg.app"
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        applicationId "com.oepnimg.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+            // ignoreAssetsPattern by capacitor
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    // 厂商分包：每个渠道独立 applicationId，可同设备共存便于联调
+    flavorDimensions += "vendor"
+    productFlavors {
+        universal {
+            dimension "vendor"
+            // 不附加 SDK
+        }
+        xiaomi {
+            dimension "vendor"
+            applicationIdSuffix ".xiaomi"
+            versionNameSuffix "-xiaomi"
+            buildConfigField "String", "VENDOR", "\"xiaomi\""
+            buildConfigField "String", "MIPUSH_APP_ID", "\"${project.findProperty('MIPUSH_APP_ID') ?: ''}\""
+            buildConfigField "String", "MIPUSH_APP_KEY", "\"${project.findProperty('MIPUSH_APP_KEY') ?: ''}\""
+        }
+        oppo {
+            dimension "vendor"
+            applicationIdSuffix ".oppo"
+            versionNameSuffix "-oppo"
+            buildConfigField "String", "VENDOR", "\"oppo\""
+            buildConfigField "String", "OPUSH_APP_KEY", "\"${project.findProperty('OPUSH_APP_KEY') ?: ''}\""
+            buildConfigField "String", "OPUSH_APP_SECRET", "\"${project.findProperty('OPUSH_APP_SECRET') ?: ''}\""
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug // 用户接入正式签名后替换
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+repositories {
+    flatDir {
+        dirs 'libs', '../../android-plugins/mipush/libs', '../../android-plugins/oppopush/libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+
+    // 自研插件
+    implementation project(':oepnimg-gallery-save')
+    implementation project(':oepnimg-vendor-helper')
+    xiaomiImplementation project(':oepnimg-mipush')
+    oppoImplementation project(':oepnimg-oppopush')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch (Exception e) {
+    logger.info "google-services.json not found, skipping plugin"
+}

@@ -1,0 +1,21 @@
+import Link from "next/link";
+
+export function SiteHeader() {
+  return (
+    <header className="border-b">
+      <div className="container mx-auto flex h-14 items-center justify-between">
+        <Link href="/" className="font-semibold tracking-tight">
+          OEPNIMG
+        </Link>
+        <nav className="flex items-center gap-4 text-sm">
+          <Link href="/generate" className="text-muted-foreground hover:text-foreground">
+            生成
+          </Link>
+          <Link href="/admin" className="text-muted-foreground hover:text-foreground">
+            后台
+          </Link>
+        </nav>
+      </div>
+    </header>
+  );
+}

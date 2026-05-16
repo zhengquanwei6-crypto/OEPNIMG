@@ -1,0 +1,188 @@
+// OEPNIMG 数据模型
+// SQLite 用于开发；生产可切换 PostgreSQL，仅需修改 datasource。
+// 注意：SQLite 不支持原生 enum / array，因此用 String 存储枚举与 JSON。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =========================================================================
+// 用户（最小可用：admin 单租户，预留多用户扩展）
+// =========================================================================
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         String   @default("admin") // admin | user
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  generations Generation[]
+}
+
+// =========================================================================
+// API 中转站（Provider）
+// 一个 Provider 是一份"具体可调用"的实例：包含 baseUrl + 已加密的 apiKey
+// 它的"调用规则"由所引用的 AdapterTemplate（指定版本）决定
+// =========================================================================
+model Provider {
+  id          String   @id @default(cuid())
+  slug        String   @unique // 例: "openai-relay-cn-1"
+  name        String
+  description String?
+  baseUrl     String
+  // 加密后的 API Key（AES-GCM, 由 lib/crypto.ts 处理）
+  apiKeyEnc   String
+  // 启用状态
+  enabled     Boolean  @default(true)
+  // 排序权重（小→前）
+  sortOrder   Int      @default(0)
+  // 用户自定义额外 headers / 元数据（JSON）
+  metadataJson String  @default("{}")
+
+  // 引用一个已发布的适配器模板（具体 version）
+  templateId      String
+  template        AdapterTemplate @relation(fields: [templateId], references: [id])
+
+  models      Model[]
+  generations Generation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
+}
+
+// =========================================================================
+// 模型（属于某个 Provider，由模板的 models 段同步而来；可被禁用/重命名）
+// =========================================================================
+model Model {
+  id           String   @id @default(cuid())
+  providerId   String
+  provider     Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  // Adapter 中定义的 model id（调用时使用）
+  modelKey     String
+  displayName  String
+  capability   String   // text-to-image | image-to-image | upscale | inpaint
+  enabled      Boolean  @default(true)
+  // 单次调用预估成本（USD），用于汇总展示，不参与计费
+  costEstimate Float?
+
+  generations Generation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerId, modelKey])
+  @@index([capability, enabled])
+}
+
+// =========================================================================
+// 适配器模板（Adapter）
+// 由 LLM 助手从 API 文档解析得到；同一中转站可多版本并存
+// =========================================================================
+model AdapterTemplate {
+  id          String   @id @default(cuid())
+  // 同一逻辑模板的标识（如 "openai-compatible"），用于版本分组
+  templateKey String
+  version     String   // 如 "1.0.0" / "2024-11-15"
+  name        String
+  description String?
+
+  // 完整 Adapter JSON（符合 docs/adapter-spec.md）
+  configJson  String
+
+  // 来源
+  sourceDocId String?
+  sourceDoc   ApiDoc?  @relation(fields: [sourceDocId], references: [id])
+
+  // 状态：draft | published | archived
+  status      String   @default("draft")
+  // 干跑校验结果（最近一次）
+  lastDryRunOk Boolean?
+  lastDryRunAt DateTime?
+  lastDryRunMessage String?
+
+  providers Provider[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateKey, version])
+  @@index([status])
+}
+
+// =========================================================================
+// 抓取/上传的 API 文档原文（供 LLM 解析、留档复盘）
+// =========================================================================
+model ApiDoc {
+  id        String   @id @default(cuid())
+  sourceUrl String?
+  title     String?
+  // 原始内容（HTML 或 markdown 或 OpenAPI YAML/JSON）
+  rawContent String
+  contentType String @default("text/html") // text/html | text/markdown | application/yaml | application/json
+  // 提取后的纯文本（用于 LLM）
+  cleanedText String?
+  bytesSize  Int?
+  fetchedAt  DateTime @default(now())
+
+  templates AdapterTemplate[]
+
+  @@index([sourceUrl])
+}
+
+// =========================================================================
+// 一次图片生成任务
+// =========================================================================
+model Generation {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  modelId    String
+  model      Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  // 业务输入
+  prompt          String
+  negativePrompt  String?
+  size            String?  // 1024x1024
+  count           Int      @default(1)
+  seed            Int?
+  paramsJson      String   @default("{}") // 其他自定义参数
+
+  // 状态机：queued | running | polling | succeeded | failed | canceled
+  status     String   @default("queued")
+  progress   Int      @default(0)        // 0-100
+  // 结果：图片 URL 列表（JSON 数组）
+  resultUrlsJson String @default("[]")
+  // 提交后中转站返回的 taskId（异步任务）
+  externalTaskId String?
+  // 错误信息（失败时）
+  errorMessage   String?
+  // 性能与成本
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  durationMs     Int?
+  costUsd        Float?
+
+  // 调试快照（最后一次请求/响应，便于复盘）
+  lastRequestJson  String?
+  lastResponseJson String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([userId, createdAt])
+  @@index([providerId, createdAt])
+}
