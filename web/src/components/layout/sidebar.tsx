@@ -15,6 +15,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Plus,
+  Users,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -41,7 +43,9 @@ const adminNav: NavLink[] = [
   { href: "/admin/templates", label: "适配器模板", icon: FileCode2 },
   { href: "/admin/agent", label: "LLM 助手", icon: Bot },
   { href: "/admin/history", label: "生成历史", icon: History },
+  { href: "/admin/users", label: "用户管理", icon: Users },
   { href: "/admin/settings", label: "系统设置", icon: Settings },
+  { href: "/admin/audit", label: "审计日志", icon: Shield },
 ];
 
 export function Sidebar({ role }: { role?: string }) {
