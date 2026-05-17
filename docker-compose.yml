@@ -19,6 +19,9 @@ services:
       AGENT_MODEL: ${AGENT_MODEL:-gpt-4o-mini}
       FETCH_TIMEOUT_MS: ${FETCH_TIMEOUT_MS:-20000}
       FETCH_MAX_BYTES: ${FETCH_MAX_BYTES:-2000000}
+      # 通过纯 HTTP 部署（IP 直连，无 HTTPS）时设为 false
+      # 上了 HTTPS（如 Caddy/Nginx 反代）后建议设为 true
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
     volumes:
       - oepnimg-data:/data
     healthcheck:

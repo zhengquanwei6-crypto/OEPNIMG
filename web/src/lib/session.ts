@@ -19,13 +19,19 @@ function getOptions(): SessionOptions {
   if (!password || password.length < 32) {
     throw new Error("SESSION_SECRET 必须配置且长度 ≥ 32 字符");
   }
+  // 默认生产环境用 secure cookie（仅 HTTPS）；
+  // 如果通过纯 HTTP 部署（如 IP 直连），可设置 COOKIE_SECURE=false
+  const secure =
+    process.env.COOKIE_SECURE !== undefined
+      ? process.env.COOKIE_SECURE === "true"
+      : process.env.NODE_ENV === "production";
   return {
     password,
     cookieName: SESSION_COOKIE,
     cookieOptions: {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure,
       path: "/",
       maxAge: 60 * 60 * 24 * 7, // 7d
     },
