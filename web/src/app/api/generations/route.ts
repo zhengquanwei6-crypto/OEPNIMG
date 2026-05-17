@@ -6,6 +6,7 @@
  *   ?page=1&pageSize=20
  */
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { ok, handleError } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const q = Query.parse(Object.fromEntries(url.searchParams.entries()));
 
-    const where: Record<string, unknown> = { hidden: false };
+    const where: Prisma.GenerationWhereInput = { hidden: false };
     if (q.favorite) where.favorite = true;
     if (q.status) where.status = q.status;
     if (q.providerId) where.providerId = q.providerId;

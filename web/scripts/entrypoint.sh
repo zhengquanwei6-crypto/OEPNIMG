@@ -2,15 +2,23 @@
 # OEPNIMG entrypoint：启动前自动应用 Prisma 迁移 + 注入种子（幂等）
 set -e
 
+echo "[entrypoint] OEPNIMG container starting..."
+echo "[entrypoint] DATABASE_URL=$DATABASE_URL"
+
+# 1) 应用迁移（幂等）
 echo "[entrypoint] applying database migrations..."
-if [ -d ./node_modules/prisma ]; then
-  npx prisma migrate deploy
+if [ -d /app/node_modules/prisma ]; then
+  node /app/node_modules/prisma/build/index.js migrate deploy || {
+    echo "[entrypoint] migrate deploy failed, falling back to db push..."
+    node /app/node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss
+  }
 else
-  # standalone 镜像里只装了 @prisma/client，没有 prisma CLI
-  # 改为执行内置迁移：节点级 ALTER 风险较大 —— 因此 Dockerfile 里我们保留了 prisma 目录
-  # 但不带 prisma CLI 时，假定已通过 init 镜像 / 部署脚本 migrate-deploy 过
-  echo "[entrypoint] prisma CLI not found; assuming DB is already migrated"
+  echo "[entrypoint] WARNING: prisma CLI not found"
 fi
 
-echo "[entrypoint] starting OEPNIMG..."
+# 2) 注入种子（幂等：admin 用户 + 内置模板）
+echo "[entrypoint] running seed (idempotent)..."
+node /app/scripts/seed-runtime.cjs || echo "[entrypoint] seed warning (continuing)"
+
+echo "[entrypoint] starting OEPNIMG server on port ${PORT:-3000}..."
 exec "$@"

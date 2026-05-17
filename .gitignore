@@ -76,3 +76,7 @@ mobile/android/app/src/main/assets/capacitor.plugins.json
 .netlify/
 tmp/
 temp/
+
+# pnpm cache (内容寻址，体积巨大)
+.pnpm-store/
+**/.pnpm-store/

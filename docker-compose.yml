@@ -1,10 +1,9 @@
-version: "3.8"
-
 services:
   web:
     build:
       context: ./web
       dockerfile: Dockerfile
+    image: oepnimg-web:latest
     container_name: oepnimg-web
     restart: unless-stopped
     ports:

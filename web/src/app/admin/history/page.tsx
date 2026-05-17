@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export default async function HistoryPage({
   searchParams: Promise<{ favorite?: string; status?: string }>;
 }) {
   const sp = await searchParams;
-  const where: Record<string, unknown> = { hidden: false };
+  const where: Prisma.GenerationWhereInput = { hidden: false };
   if (sp.favorite === "1") where.favorite = true;
   if (sp.status) where.status = sp.status;
 

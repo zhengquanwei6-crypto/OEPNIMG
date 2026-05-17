@@ -1,3 +1,4 @@
+# Web 不需要的内容（减少 build context）
 **/node_modules
 **/.next
 **/dist
@@ -13,8 +14,27 @@
 **/coverage
 **/.turbo
 **/.vercel
-**/android
-**/ios
-mobile/
+
+# Android 工程（不进 docker；保留 mobile/package.json 给 pnpm workspace 解析）
+mobile/android
+mobile/android-plugins
+mobile/android-template
+mobile/www
+mobile/scripts
+mobile/src
+mobile/assets
+mobile/README.md
+mobile/.gitignore
+mobile/capacitor.config.ts
+
+# 文档与 CI
 docs/
 .github/
+
+# 沙箱临时文件
+*.pem
+*.key
+*.apk
+*.aab
+*.keystore
+*.jks
