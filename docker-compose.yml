@@ -24,8 +24,21 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
     volumes:
       - oepnimg-data:/data
+    # 资源限制（防止跑飞吃光宿主机）
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.5"
+    # 日志轮转
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    # 健康检查：调用 /api/health（验证 DB 连通性）
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3

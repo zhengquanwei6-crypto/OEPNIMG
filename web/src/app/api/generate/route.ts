@@ -25,10 +25,19 @@ const Body = z.object({
 export async function POST(req: Request) {
   try {
     const sess = await getSession();
+
+    // 安全：必须登录才能使用生成功能（防止匿名滥用 API Key）
+    if (!sess.userId) {
+      return new Response(JSON.stringify({ ok: false, error: "请先登录" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     assertLimit({
       scope: "generate",
       key: clientKey(req, sess.userId),
-      max: 20,
+      max: 10,
       windowMs: 60_000,
     });
     const body = Body.parse(await req.json());

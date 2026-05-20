@@ -205,3 +205,82 @@ model ProviderHealth {
 
   @@index([providerId, checkedAt])
 }
+
+// =========================================================================
+// 对话（聊天 + 图片生成混合）
+// =========================================================================
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String?
+  title     String   @default("新对话")
+  pinned    Boolean  @default(false)
+  archived  Boolean  @default(false)
+
+  messages  Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+  @@index([pinned, updatedAt])
+}
+
+// =========================================================================
+// 消息（用户消息 / AI 回复 / 系统通知）
+// =========================================================================
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // 发送者：user | assistant | system
+  role           String
+  // 消息类型：text | image | error | progress
+  type           String   @default("text")
+  // 文字内容
+  content        String   @default("")
+  // 图片 / 附件（JSON 数组）
+  attachmentsJson String  @default("[]")
+  // 关联的 Generation（如果这条消息触发了图片生成）
+  generationId   String?
+  // 模型/Provider 信息快照
+  metadataJson   String   @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// =========================================================================
+// 应用设置（键值对，替代 .env 中的运行时配置）
+// =========================================================================
+model AppSetting {
+  key         String   @id
+  value       String
+  // 类型提示：string | number | boolean | json | secret
+  valueType   String   @default("string")
+  // 人类可读描述
+  description String?
+  // 是否为敏感字段（前端显示时 mask）
+  sensitive   Boolean  @default(false)
+
+  updatedAt   DateTime @updatedAt
+}
+
+// =========================================================================
+// 审计日志
+// =========================================================================
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  username  String?
+  action    String   // e.g. "login" | "setting.update" | "provider.create"
+  target    String?  // e.g. "provider:cxxx" | "setting:ADMIN_PASSWORD"
+  detail    String?  // JSON or human-readable diff
+  ip        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([userId, createdAt])
+}

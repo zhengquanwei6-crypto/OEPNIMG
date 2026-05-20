@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { inlineThemeScript } from "@/lib/theme";
+import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,12 +28,11 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
-        <script
-          // 同步执行：避免暗色模式闪烁 (FOUC)
-          dangerouslySetInnerHTML={{ __html: inlineThemeScript }}
-        />
+        <script dangerouslySetInnerHTML={{ __html: inlineThemeScript }} />
       </head>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }
